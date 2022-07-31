@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>hello-wasm example</title>
+    <style>
+      body {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="fire-canvas"></canvas>
+    <canvas id="colling-canvas"></canvas>
+    <label>
+      <span>light Threshold:</span> 
+      <input id="light-threshold" type="number" value="32" />
+    </label>
+    <script type="module">
+      import init, { Fire, Cell } from "./pkg/hello_wasm.js";
+
+      const CELL_SIZE = 10; // px
+      const GRID_COLOR = "#CCCCCC";
+      const DEAD_COLOR = "#FFFFFF";
+      const ALIVE_COLOR = "#000000";
+      
+      const FRAMES_PER_SECOND = 30;  // Valid values are 60,30,20,15,10...
+      const FRAME_MIN_TIME = (1000/60) * (60 / FRAMES_PER_SECOND) - (1000/60) * 0.5;
+
+      init().then(instance => {
+        const fire = Fire.new();
+        const pre = document.getElementById("fire-output");
+        const width = fire.width();
+        const height = fire.height();
+        const canvas = document.getElementById("fire-canvas");
+        canvas.height = height;
+        canvas.width = width;
+
+        const ctx = canvas.getContext('2d');
+      
+        const getIndex = (row, column) => {
+          return row * width + column;
+        };
+
+        const drawCells = (memory) => {
+          const cellsPtr = fire.pixels();
+          const cells = new Uint32Array(memory.buffer, cellsPtr, width * height);
+
+          for (let row = 0; row < height; row++) {
+            for (let column = 0; column < width; column++) {
+              const idx = getIndex(row, column);
+              let rgb = Math.round(cells[idx]);
+              ctx.fillStyle = "rgba("+rgb+","+rgb+","+rgb+",1.0)";
+              ctx.fillRect(column, row, 1, 1);
+            }
+          }
+        };
+
+        let lastFrameTime = 0;  // the last frame time
+        const renderLoop = () => {
+          let time = Date.now();
+          
+          if(time - lastFrameTime < FRAME_MIN_TIME) {
+            requestAnimationFrame(renderLoop);
+            return;
+          }
+          fire.tick();
+          
+          lastFrameTime = time; // remember the time of the rendered frame
+          drawCells(instance.memory);
+
+          requestAnimationFrame(renderLoop);
+        };
+
+        requestAnimationFrame(renderLoop);
+
+        const drawGrid = (memory) => {
+          const canvas = document.getElementById("colling-canvas");
+          canvas.height = height;
+          canvas.width = width;
+
+          const ctx = canvas.getContext('2d');
+          const cellsPtr = fire.cooling_map();
+
+          const cells = new Uint32Array(memory.buffer, cellsPtr, width * height);
+
+          for (let row = 0; row < height; row++) {
+            for (let column = 0; column < width; column++) {
+              const idx = getIndex(row, column);
+              let rgb = Math.round(cells[idx]);
+              ctx.fillStyle = "rgba("+rgb+","+rgb+","+rgb+",1.0)";
+              ctx.fillRect(column, row, 1, 1);
+            }
+          }
+        };
+      });
+    </script>
+  </body>
+</html>
