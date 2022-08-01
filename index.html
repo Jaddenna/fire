@@ -25,7 +25,7 @@
       <input id="light-threshold" type="number" value="32" />
     </label>
     <script type="module">
-      import init, { Fire, Cell } from "./pkg/hello_wasm.js";
+      import init, { Fire, FireSettings } from "./pkg/hello_wasm.js";
 
       const CELL_SIZE = 10; // px
       const GRID_COLOR = "#CCCCCC";
@@ -36,6 +36,9 @@
       const FRAME_MIN_TIME = (1000/60) * (60 / FRAMES_PER_SECOND) - (1000/60) * 0.5;
 
       init().then(instance => {
+        const settings = new FireSettings();
+        
+
         const fire = Fire.new();
         const pre = document.getElementById("fire-output");
         const width = fire.width();

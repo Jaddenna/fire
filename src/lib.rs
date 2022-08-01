@@ -150,21 +150,6 @@ impl Vector2 {
 	}
 }
 
-pub fn shuffle(tab: Vec<u32>) -> Vec<u32> {
-    let mut rng = rand::thread_rng();
-    let mut next = tab.clone();
-
-    for e in (next.len() - 1)..0 {
-        let index = (rng.gen::<f32>() * (e as f32 - 1.0)).round() as usize;
-        let temp = next[index];
-
-        next[e] = tab[index];
-        next[index] = temp;
-    }
-
-    next
-}
-
 pub fn make_permutation() -> Vec<u32> {
     let mut p:Vec<u32> = (0..256).collect();
     p.shuffle(&mut thread_rng());
@@ -234,20 +219,132 @@ pub fn noise_2d(P: Vec<u32>, x:f32, y: f32) -> f32{
 
 }
 
+#[wasm_bindgen]
 pub struct FireSettings {
+    light_threshold: f32,
     width: usize,
     height: usize,
-    light_threshold: f32,
 }
 
-pub struct CoolingMap {
-    pixels: Vec<u32>
+#[wasm_bindgen]
+pub struct Fire {
+    settings: FireSettings,
+    pixels: Vec<u32>,
+    cooling_map: Vec<u32>,
 }
 
-impl CoolingMap {
-    pub fn new(settings: FireSettings) -> CoolingMap{
-        let width = 400;
-        let height = 200;
+#[wasm_bindgen]
+impl Fire {
+
+    pub fn width(&self) -> usize {
+        self.settings.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.settings.height
+    }
+
+    pub fn set_size(&mut self, width: usize, height: usize) {
+        self.settings.width = width;
+        self.settings.height = height;
+    }
+
+    pub fn pixels(&self) -> *const u32 {
+        // log!("pixels {:?}", self.pixels.len());
+        self.pixels.as_ptr()
+    }
+
+    pub fn last_p(&self) -> u32 {
+        // log!("pixels last {:?}", self.pixels.last().unwrap());
+        *self.pixels.last().unwrap()
+    }
+
+    pub fn cooling_map(&self) -> *const u32 {
+        self.cooling_map.as_ptr()
+    }
+
+    pub fn tick(&mut self) {
+        let width = self.settings.width;
+        let height = self.settings.height;
+        let mut buffer = self.pixels.clone();
+
+        // log!("pixels {:?}", self.pixels);
+
+        for row in 5..height - 1 {
+            for column in 1..width - 1 {
+                let rowU = row as u32;
+                let columnU = column as u32;
+                let indext = self.get_index(rowU - 1, columnU);
+                let indexr = self.get_index(rowU, columnU + 1);
+                let indexb = self.get_index(rowU + 1, columnU);
+                let indexl = self.get_index(rowU, columnU - 1);
+                let index = self.get_index(rowU, columnU);
+                let cell = buffer[index];
+                
+                let nt = buffer[indext];
+                let nb = buffer[indexb];
+                let nl = buffer[indexl];
+                let nr = buffer[indexr];
+                let mut avg = (nt + nb + nl + nr) / 4;
+                let cooling = self.cooling_map[index];
+                avg = if avg > cooling { avg - cooling as u32 } else { 0 };
+                let index5 = self.get_index(rowU - 3, columnU);
+                self.pixels[index5] = avg;
+            }
+        }
+
+        let mut map_chunks = self.cooling_map
+            .chunks(width as usize)
+            .map(|f| f.to_vec())
+            .collect::<Vec<Vec<u32>>>();
+
+        map_chunks.rotate_right(1);
+        map_chunks.rotate_right(1);
+        map_chunks.rotate_right(1);
+        map_chunks.rotate_right(1);
+        map_chunks.rotate_right(1);
+        
+        self.cooling_map = map_chunks.concat();
+
+        // log!("pixels {:?}", self.pixels);
+    }
+
+    pub fn render(&self) -> String {
+        self.to_string()
+    }
+    
+    pub fn new() -> Fire {
+        console_error_panic_hook::set_once();
+
+        let settings = FireSettings { 
+            width: 400,
+            height: 200,
+            light_threshold: 12.0,
+        };
+
+        // log!("y {:?}", pixels);
+        Fire {
+            pixels: Fire::init_pixels(&settings),
+            cooling_map: Fire::init_cooling_map(&settings),
+            settings: settings
+        }
+    }
+
+    fn get_index(&self, row: u32, column: u32) -> usize {
+        (row as usize * self.settings.width + column as usize) as usize
+    }
+    
+    pub fn init_pixels(settings: &FireSettings) -> Vec<u32> {
+        let width = settings.width;
+        let height = settings.height;
+        (0..(width * height))
+            .map(|x| 255)
+            .collect::<Vec<u32>>()
+    }
+
+    pub fn init_cooling_map(settings: &FireSettings) -> Vec<u32> {
+        let width = settings.width;
+        let height = settings.height;
 
         let P = make_permutation();
         let lightThreshold = settings.light_threshold;
@@ -285,160 +382,13 @@ impl CoolingMap {
 
         let pixels = map.concat();
 
-        CoolingMap {
-            pixels
-        }
-    }
-
-    // fn get_index(&self, row: u32, column: u32) -> usize {
-    //     (row as usize * self.width + column as usize) as usize
-    // }
-}
-
-#[wasm_bindgen]
-pub struct Fire {
-    width: usize,
-    height: usize,
-    pixels: Vec<u32>,
-    cooling_map: Vec<u32>,
-}
-
-#[wasm_bindgen]
-impl Fire {
-
-    pub fn width(&self) -> usize {
-        self.width
-    }
-
-    pub fn height(&self) -> usize {
-        self.height
-    }
-
-    pub fn pixels(&self) -> *const u32 {
-        // log!("pixels {:?}", self.pixels.len());
-        self.pixels.as_ptr()
-    }
-
-    pub fn last_p(&self) -> u32 {
-        // log!("pixels last {:?}", self.pixels.last().unwrap());
-        *self.pixels.last().unwrap()
-    }
-
-    pub fn cooling_map(&self) -> *const u32 {
-        self.cooling_map.as_ptr()
-    }
-
-    pub fn tick(&mut self) {
-        let mut buffer = self.pixels.clone();
-
-        // log!("pixels {:?}", self.pixels);
-
-        for row in 5..self.height - 1 {
-            for column in 1..self.width - 1 {
-                let rowU = row as u32;
-                let columnU = column as u32;
-                let indext = self.get_index(rowU - 1, columnU);
-                let indexr = self.get_index(rowU, columnU + 1);
-                let indexb = self.get_index(rowU + 1, columnU);
-                let indexl = self.get_index(rowU, columnU - 1);
-                let index = self.get_index(rowU, columnU);
-                let cell = buffer[index];
-                
-                let nt = buffer[indext];
-                let nb = buffer[indexb];
-                let nl = buffer[indexl];
-                let nr = buffer[indexr];
-                let mut avg = (nt + nb + nl + nr) / 4;
-                let cooling = self.cooling_map[index];
-                avg = if avg > cooling { avg - cooling as u32 } else { 0 };
-                let index5 = self.get_index(rowU - 3, columnU);
-                self.pixels[index5] = avg;
-            }
-        }
-
-        let mut map_chunks = self.cooling_map
-            .chunks(self.width as usize)
-            .map(|f| f.to_vec())
-            .collect::<Vec<Vec<u32>>>();
-
-        map_chunks.rotate_right(1);
-        map_chunks.rotate_right(1);
-        map_chunks.rotate_right(1);
-        map_chunks.rotate_right(1);
-        map_chunks.rotate_right(1);
-        
-        self.cooling_map = map_chunks.concat();
-
-        // log!("pixels {:?}", self.pixels);
-    }
-
-    pub fn render(&self) -> String {
-        self.to_string()
-    }
-    
-    pub fn new() -> Fire {
-        console_error_panic_hook::set_once();
-        let width = 400;
-        let height = 200;
-
-        let P = make_permutation();
-        let lightThreshold = 12.0;
-        let frequency = 0.05;
-        let mut map: Vec<Vec<u32>> = vec![];
-        let mut repeat = true;
-        let mut y = 0.0;
-        let mut ch = 0.0;
-
-        while repeat {//&& y < 1000.0 {
-            let row = (0..width)
-                .into_iter()
-                .map(|x| ((noise_2d(P.clone(), x as f32 * frequency, y * frequency) + 1.0) * 0.5 * lightThreshold).round() as u32)
-                .collect::<Vec<u32>>();
-        
-            // log!("row {:?}", row);
-
-            let all_identical = y > 0.0 && map[0]
-                .iter()
-                .enumerate()
-                .map(|(index, value)| *value == row[index])
-                .all(|x| x);
-            
-            // log!("y {:?}, all_identical {:?}", y, all_identical);
-
-            if all_identical || y == 999.0 {
-                repeat = false;
-                ch = y;
-            } else {
-                map.push(row);
-            }
-
-            y += 1.0;
-        }
-        // log!("ch {:?}", ch);
-
-        let pixels: Vec<u32> = (0..(width * height))
-            .enumerate()
-            .map(|(index, value)| if index > (width * height) - width * 5 { 255 } else { 255 })
-            .collect::<Vec<u32>>();
-
-        let cooling_map = map.concat();
-        // log!("y {:?}", pixels);
-        Fire {
-            width,
-            height,
-            pixels,
-            cooling_map
-        }
-    }
-
-    fn get_index(&self, row: u32, column: u32) -> usize {
-        (row as usize * self.width + column as usize) as usize
+        pixels
     }
 }
 
 impl fmt::Display for Fire {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for line in self.cooling_map.as_slice().chunks(self.width as usize) {
+        for line in self.cooling_map.as_slice().chunks(self.settings.width) {
             // for row in line {
             for &cell in line {
                 write!(f, "|{}|", cell)?;
